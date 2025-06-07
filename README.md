@@ -13,7 +13,7 @@ SpecDrill is a Go-based tool for automatically generating and running test cases
 ## Installation
 
 ```bash
-go install github.com/hrpd/specdrill/cmd/cli@latest
+go install github.com/BarneyRubble12/specdrill/cmd/cli@latest
 ```
 
 ## Usage

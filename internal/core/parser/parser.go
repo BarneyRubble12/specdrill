@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	"github.com/BarneyRubble12/specdrill/internal/core/model"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/hrpd/specdrill/internal/core/model"
 )
 
 // Parser defines the interface for parsing OpenAPI specifications

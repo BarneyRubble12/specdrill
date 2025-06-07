@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hrpd/specdrill/internal/core/executor"
-	"github.com/hrpd/specdrill/internal/core/parser"
+	"github.com/BarneyRubble12/specdrill/internal/core/executor"
+	"github.com/BarneyRubble12/specdrill/internal/core/parser"
 )
 
 func main() {
@@ -64,4 +64,4 @@ func main() {
 	if summary.FailedTests > 0 {
 		os.Exit(1)
 	}
-} 
+}

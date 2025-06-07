@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hrpd/specdrill/internal/core/model"
+	"github.com/BarneyRubble12/specdrill/internal/core/model"
 )
 
 // Executor defines the interface for executing test cases
@@ -105,4 +105,4 @@ func (e *HTTPExecutor) ExecuteSuite(suite *model.TestSuite) model.TestSummary {
 
 	summary.Duration = time.Since(startTime).Milliseconds()
 	return summary
-} 
+}
