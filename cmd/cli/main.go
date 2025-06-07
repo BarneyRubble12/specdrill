@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/BarneyRubble12/specdrill/internal/core/executor"
-	"github.com/BarneyRubble12/specdrill/internal/core/parser"
+	"github.com/BarneyRubble12/specdrill/internal/di"
 )
 
 func main() {
@@ -22,12 +21,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create parser and executor
-	parser := parser.NewOpenAPIParser()
-	executor := executor.NewHTTPExecutor()
+	// Initialize the application container
+	container, err := di.InitializeContainer()
+	if err != nil {
+		fmt.Printf("Error initializing application: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Parse the OpenAPI spec
-	suite, err := parser.ParseSpec(*specPath)
+	suite, err := container.Parser.ParseSpec(*specPath)
 	if err != nil {
 		fmt.Printf("Error parsing spec: %v\n", err)
 		os.Exit(1)
@@ -39,7 +41,7 @@ func main() {
 	}
 
 	// Execute the test suite
-	summary := executor.ExecuteSuite(suite)
+	summary := container.Executor.ExecuteSuite(suite)
 
 	// Print results
 	fmt.Printf("\nTest Results for %s\n", suite.Name)
