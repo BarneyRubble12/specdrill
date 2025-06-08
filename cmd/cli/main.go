@@ -10,13 +10,18 @@ import (
 
 func main() {
 	// Parse command line flags
-	specPath := flag.String("spec", "", "Path to OpenAPI specification file (YAML or JSON)")
+	specPath := flag.String("spec", "", "Path to OpenAPI specification file (YAML/JSON) or URL")
 	baseURL := flag.String("base-url", "", "Base URL for the API (overrides server URL in spec)")
 	flag.Parse()
 
 	// Validate required flags
 	if *specPath == "" {
 		fmt.Println("Error: --spec flag is required")
+		fmt.Println("Usage: specdrill --spec <file-path-or-url> [--base-url <api-base-url>]")
+		fmt.Println("\nExamples:")
+		fmt.Println("  specdrill --spec ./openapi.yaml")
+		fmt.Println("  specdrill --spec https://api.example.com/openapi.json")
+		fmt.Println("  specdrill --spec ./openapi.yaml --base-url https://staging-api.example.com")
 		flag.Usage()
 		os.Exit(1)
 	}

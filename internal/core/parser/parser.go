@@ -2,7 +2,10 @@ package parser
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
+	"net/http"
+	"os"
+	"strings"
 
 	"github.com/BarneyRubble12/specdrill/internal/core/model"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -10,23 +13,27 @@ import (
 
 // Parser defines the interface for parsing OpenAPI specifications
 type Parser interface {
-	ParseSpec(filePath string) (*model.TestSuite, error)
+	ParseSpec(specPath string) (*model.TestSuite, error)
 }
 
 // OpenAPIParser implements the Parser interface for OpenAPI specifications
-type OpenAPIParser struct{}
+type OpenAPIParser struct {
+	client *http.Client
+}
 
 // NewOpenAPIParser creates a new OpenAPI parser
 func NewOpenAPIParser() *OpenAPIParser {
-	return &OpenAPIParser{}
+	return &OpenAPIParser{
+		client: &http.Client{},
+	}
 }
 
-// ParseSpec parses an OpenAPI specification file and returns a TestSuite
-func (p *OpenAPIParser) ParseSpec(filePath string) (*model.TestSuite, error) {
-	// Read the spec file
-	data, err := ioutil.ReadFile(filePath)
+// ParseSpec parses an OpenAPI specification file or URL and returns a TestSuite
+func (p *OpenAPIParser) ParseSpec(specPath string) (*model.TestSuite, error) {
+	// Read the spec data
+	data, err := p.readSpecData(specPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read spec file: %w", err)
+		return nil, fmt.Errorf("failed to read spec: %w", err)
 	}
 
 	// Load the OpenAPI spec
@@ -65,6 +72,27 @@ func (p *OpenAPIParser) ParseSpec(filePath string) (*model.TestSuite, error) {
 	return suite, nil
 }
 
+// readSpecData reads the OpenAPI specification from either a local file or a URL
+func (p *OpenAPIParser) readSpecData(specPath string) ([]byte, error) {
+	if strings.HasPrefix(specPath, "http://") || strings.HasPrefix(specPath, "https://") {
+		// Fetch from URL
+		resp, err := p.client.Get(specPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch spec from URL: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("failed to fetch spec: HTTP %d", resp.StatusCode)
+		}
+
+		return io.ReadAll(resp.Body)
+	}
+
+	// Read from local file
+	return os.ReadFile(specPath)
+}
+
 // createTestCase creates a test case from an operation
 func createTestCase(method, path string, operation *openapi3.Operation) model.TestCase {
 	testCase := model.TestCase{
@@ -98,7 +126,6 @@ func getExpectedStatus(operation *openapi3.Operation) int {
 		}
 	}
 
-	// If no 2xx responses, return the first defined status code
 	// Just return 200 as default since we can't determine the actual status
 	return 200
 }
