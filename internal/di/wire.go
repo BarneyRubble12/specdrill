@@ -1,3 +1,6 @@
+//go:build wireinject
+// +build wireinject
+
 package di
 
 import (
@@ -8,9 +11,15 @@ import (
 
 // ProviderSet is a Wire provider set for the application
 var ProviderSet = wire.NewSet(
-	// Core components
-	parser.NewOpenAPIParser,
-	executor.NewHTTPExecutor,
-	wire.Bind(new(parser.Parser), new(*parser.OpenAPIParser)),
-	wire.Bind(new(executor.Executor), new(*executor.HTTPExecutor)),
+	parser.NewParser,
+	executor.NewExecutor,
 )
+
+// InitializeContainer creates a new application container with all dependencies
+func InitializeContainer() (*Container, error) {
+	wire.Build(
+		ProviderSet,
+		NewContainer,
+	)
+	return nil, nil
+}

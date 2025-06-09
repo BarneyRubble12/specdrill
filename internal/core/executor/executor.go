@@ -4,105 +4,163 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-	"time"
+	"net/url"
+	"strings"
 
-	"github.com/BarneyRubble12/specdrill/internal/core/model"
+	"github.com/BarneyRubble12/specdrill/internal/core/domain"
+	"github.com/BarneyRubble12/specdrill/internal/core/logger"
 )
 
-// Executor defines the interface for executing test cases
-type Executor interface {
-	ExecuteTest(testCase model.TestCase, baseURL string) model.TestResult
-	ExecuteSuite(suite *model.TestSuite) model.TestSummary
-}
-
-// HTTPExecutor implements the Executor interface using HTTP requests
-type HTTPExecutor struct {
+// Executor handles the execution of API tests
+type Executor struct {
 	client *http.Client
 }
 
-// NewHTTPExecutor creates a new HTTP executor
-func NewHTTPExecutor() *HTTPExecutor {
-	return &HTTPExecutor{
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+// NewExecutor creates a new Executor instance
+func NewExecutor() *Executor {
+	return &Executor{
+		client: &http.Client{},
 	}
 }
 
-// ExecuteTest executes a single test case and returns the result
-func (e *HTTPExecutor) ExecuteTest(testCase model.TestCase, baseURL string) model.TestResult {
-	startTime := time.Now()
-	result := model.TestResult{
-		TestCase: testCase,
+// ExecuteTest runs a test case against the API
+func (e *Executor) ExecuteTest(spec *domain.APISpec, path string, method string) (*TestResult, error) {
+	// Construct the full URL
+	baseURL := spec.BaseURL
+	if !strings.HasSuffix(baseURL, "/") {
+		baseURL += "/"
+	}
+	if strings.HasPrefix(path, "/") {
+		path = path[1:]
 	}
 
-	// Construct the full URL
-	url := fmt.Sprintf("%s%s", baseURL, testCase.Path)
+	// Replace path parameters with actual values
+	path = replacePathParams(path)
+
+	fullURL := baseURL + path
 
 	// Create the request
 	var req *http.Request
 	var err error
 
-	if testCase.RequestBody != nil {
-		body, err := json.Marshal(testCase.RequestBody)
-		if err != nil {
-			result.Error = fmt.Errorf("failed to marshal request body: %w", err)
-			result.Success = false
-			return result
-		}
-		req, err = http.NewRequest(testCase.Method, url, bytes.NewBuffer(body))
-	} else {
-		req, err = http.NewRequest(testCase.Method, url, nil)
+	// Analyze the spec to determine if a request body is required
+	// For simplicity, we'll assume POST/PUT/PATCH methods require a body
+	var body []byte
+	if method == "POST" || method == "PUT" || method == "PATCH" {
+		// Generate a simple JSON body for demonstration
+		body = []byte(`{"name": "test"}`)
 	}
 
+	if body != nil {
+		req, err = http.NewRequest(method, fullURL, bytes.NewBuffer(body))
+	} else {
+		req, err = http.NewRequest(method, fullURL, nil)
+	}
 	if err != nil {
-		result.Error = fmt.Errorf("failed to create request: %w", err)
-		result.Success = false
-		return result
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add headers
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	// Create test case log
+	testLog := logger.TestCaseLog{
+		Name:           fmt.Sprintf("%s %s", method, path),
+		Endpoint:       fullURL,
+		Method:         method,
+		PathParams:     extractPathParams(path),
+		QueryParams:    extractQueryParams(req.URL),
+		RequestHeaders: extractHeaders(req.Header),
+		RequestBody:    string(body),
 	}
 
 	// Execute the request
 	resp, err := e.client.Do(req)
 	if err != nil {
-		result.Error = fmt.Errorf("request failed: %w", err)
-		result.Success = false
-		return result
+		testLog.Error = err.Error()
+		logger.LogTestCase(testLog)
+		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Record the result
-	result.StatusCode = resp.StatusCode
-	result.Response = resp
-	result.Duration = time.Since(startTime).Milliseconds()
-	result.Success = resp.StatusCode == testCase.ExpectedStatus
-
-	if !result.Success {
-		result.Message = fmt.Sprintf("Expected status %d but got %d", testCase.ExpectedStatus, resp.StatusCode)
+	// Read the response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		testLog.Error = err.Error()
+		logger.LogTestCase(testLog)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	return result
+	// Create the test result
+	result := &TestResult{
+		URL:        fullURL,
+		Method:     method,
+		StatusCode: resp.StatusCode,
+		Headers:    resp.Header,
+		Body:       string(respBody),
+	}
+
+	// Check if the response is valid JSON
+	var jsonBody interface{}
+	if err := json.Unmarshal(respBody, &jsonBody); err != nil {
+		result.IsValidJSON = false
+	} else {
+		result.IsValidJSON = true
+	}
+
+	// Update and log test case result
+	testLog.ResponseStatus = resp.StatusCode
+	testLog.ResponseBody = string(respBody)
+	logger.LogTestCase(testLog)
+
+	return result, nil
 }
 
-// ExecuteSuite executes all test cases in a suite and returns a summary
-func (e *HTTPExecutor) ExecuteSuite(suite *model.TestSuite) model.TestSummary {
-	summary := model.TestSummary{
-		TotalTests: len(suite.TestCases),
+// replacePathParams replaces path parameters with actual values
+func replacePathParams(path string) string {
+	// For demonstration, replace {id} with a sample value
+	return strings.Replace(path, "{id}", "1", -1)
+}
+
+// extractPathParams extracts path parameters from the path
+func extractPathParams(path string) map[string]string {
+	params := make(map[string]string)
+	if strings.Contains(path, "{id}") {
+		params["id"] = "1"
 	}
+	return params
+}
 
-	startTime := time.Now()
+// extractQueryParams extracts query parameters from the URL
+func extractQueryParams(u *url.URL) map[string]string {
+	params := make(map[string]string)
+	q := u.Query()
+	for k := range q {
+		params[k] = q.Get(k)
+	}
+	return params
+}
 
-	for _, testCase := range suite.TestCases {
-		result := e.ExecuteTest(testCase, suite.BaseURL)
-		summary.Results = append(summary.Results, result)
-
-		if result.Success {
-			summary.PassedTests++
-		} else {
-			summary.FailedTests++
+// extractHeaders extracts headers from the request
+func extractHeaders(h http.Header) map[string]string {
+	headers := make(map[string]string)
+	for k, v := range h {
+		if len(v) > 0 {
+			headers[k] = v[0]
 		}
 	}
+	return headers
+}
 
-	summary.Duration = time.Since(startTime).Milliseconds()
-	return summary
+// TestResult represents the result of a test execution
+type TestResult struct {
+	URL         string
+	Method      string
+	StatusCode  int
+	Headers     http.Header
+	Body        string
+	IsValidJSON bool
 }
