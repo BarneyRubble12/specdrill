@@ -7,14 +7,14 @@ import (
 
 // Container holds all the application dependencies
 type Container struct {
-	Parser   parser.Parser
-	Executor executor.Executor
+	Parser   *parser.Parser
+	Executor *executor.Executor
 }
 
 // NewContainer creates a new application container
 func NewContainer(
-	parser parser.Parser,
-	executor executor.Executor,
+	parser *parser.Parser,
+	executor *executor.Executor,
 ) *Container {
 	return &Container{
 		Parser:   parser,

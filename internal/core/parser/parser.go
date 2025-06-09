@@ -1,68 +1,88 @@
 package parser
 
 import (
+	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
 
+	"github.com/BarneyRubble12/specdrill/internal/core/domain"
 	"github.com/BarneyRubble12/specdrill/internal/core/model"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// Parser defines the interface for parsing OpenAPI specifications
-type Parser interface {
-	ParseSpec(filePath string) (*model.TestSuite, error)
+// Parser handles parsing of OpenAPI specifications
+type Parser struct {
+	client *http.Client
 }
 
-// OpenAPIParser implements the Parser interface for OpenAPI specifications
-type OpenAPIParser struct{}
-
-// NewOpenAPIParser creates a new OpenAPI parser
-func NewOpenAPIParser() *OpenAPIParser {
-	return &OpenAPIParser{}
+// NewParser creates a new Parser instance
+func NewParser() *Parser {
+	return &Parser{
+		client: &http.Client{},
+	}
 }
 
-// ParseSpec parses an OpenAPI specification file and returns a TestSuite
-func (p *OpenAPIParser) ParseSpec(filePath string) (*model.TestSuite, error) {
-	// Read the spec file
-	data, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read spec file: %w", err)
+// ParseSpec parses an OpenAPI specification from a file or URL
+func (p *Parser) ParseSpec(specPath string, baseURL string) (*domain.APISpec, error) {
+	var specData []byte
+	var err error
+
+	// Check if specPath is a URL
+	if strings.HasPrefix(specPath, "http://") || strings.HasPrefix(specPath, "https://") {
+		// For remote specs, if no base URL is provided, derive it from the spec URL
+		if baseURL == "" {
+			parsedURL, err := url.Parse(specPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse spec URL: %w", err)
+			}
+			// Remove the path and query components to get the base URL
+			parsedURL.Path = ""
+			parsedURL.RawQuery = ""
+			baseURL = parsedURL.String()
+		}
+
+		// Fetch the spec from URL
+		resp, err := p.client.Get(specPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch spec from URL: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("failed to fetch spec: HTTP %d", resp.StatusCode)
+		}
+
+		specData, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read spec from URL: %w", err)
+		}
+	} else {
+		// For local files, if no base URL is provided, return an error
+		if baseURL == "" {
+			return nil, fmt.Errorf("base URL is required for local spec files")
+		}
+
+		// Read the spec from file
+		specData, err = os.ReadFile(specPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read spec file: %w", err)
+		}
 	}
 
-	// Load the OpenAPI spec
-	loader := openapi3.NewLoader()
-	doc, err := loader.LoadFromData(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse OpenAPI spec: %w", err)
+	// Parse the spec
+	var spec domain.APISpec
+	if err := json.Unmarshal(specData, &spec); err != nil {
+		return nil, fmt.Errorf("failed to parse spec: %w", err)
 	}
 
-	// Create a new test suite
-	suite := &model.TestSuite{
-		Name:    doc.Info.Title,
-		BaseURL: doc.Servers[0].URL, // Use the first server URL as base URL
-	}
+	// Set the base URL
+	spec.BaseURL = baseURL
 
-	// Generate test cases for each path and method
-	for path, pathItem := range doc.Paths.Map() {
-		if pathItem.Get != nil {
-			testCase := createTestCase("GET", path, pathItem.Get)
-			suite.TestCases = append(suite.TestCases, testCase)
-		}
-		if pathItem.Post != nil {
-			testCase := createTestCase("POST", path, pathItem.Post)
-			suite.TestCases = append(suite.TestCases, testCase)
-		}
-		if pathItem.Put != nil {
-			testCase := createTestCase("PUT", path, pathItem.Put)
-			suite.TestCases = append(suite.TestCases, testCase)
-		}
-		if pathItem.Delete != nil {
-			testCase := createTestCase("DELETE", path, pathItem.Delete)
-			suite.TestCases = append(suite.TestCases, testCase)
-		}
-	}
-
-	return suite, nil
+	return &spec, nil
 }
 
 // createTestCase creates a test case from an operation
@@ -98,7 +118,6 @@ func getExpectedStatus(operation *openapi3.Operation) int {
 		}
 	}
 
-	// If no 2xx responses, return the first defined status code
 	// Just return 200 as default since we can't determine the actual status
 	return 200
 }

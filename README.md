@@ -4,7 +4,7 @@ SpecDrill is a Go-based tool for automatically generating and running test cases
 
 ## Features
 
-- Parse OpenAPI specifications (YAML/JSON)
+- Parse OpenAPI specifications (YAML/JSON) from local files or URLs
 - Generate test cases from API endpoints
 - Execute tests against target APIs
 - CLI interface for easy usage
@@ -19,7 +19,14 @@ go install github.com/BarneyRubble12/specdrill/cmd/cli@latest
 ## Usage
 
 ```bash
-specdrill run --spec ./openapi.yaml --base-url https://api.example.com
+# Using a local OpenAPI specification file
+specdrill --spec ./openapi.yaml
+
+# Using a remote OpenAPI specification URL
+specdrill --spec https://api.example.com/openapi.json
+
+# Overriding the base URL for testing
+specdrill --spec ./openapi.yaml --base-url https://staging-api.example.com
 ```
 
 ## Project Structure
